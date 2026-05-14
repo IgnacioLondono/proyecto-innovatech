@@ -51,8 +51,9 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/ec2_deploy_key
           chmod 600 ~/.ssh/ec2_deploy_key
+          grep -q "BEGIN.*PRIVATE KEY" ~/.ssh/ec2_deploy_key || { echo "::error::EC2_SSH_KEY debe ser la clave PRIVADA (.pem), no la pública ssh-rsa"; exit 1; }
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
-          scp -i ~/.ssh/ec2_deploy_key -o StrictHostKeyChecking=accept-new \
-            frontend-dist.tgz "${USER}@${HOST}:/tmp/frontend-dist.tgz"
-          ssh -i ~/.ssh/ec2_deploy_key -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" \
+          COMMON_SSH_OPTS="-i ${HOME}/.ssh/ec2_deploy_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
+          scp $COMMON_SSH_OPTS frontend-dist.tgz "${USER}@${HOST}:/tmp/frontend-dist.tgz"
+          ssh $COMMON_SSH_OPTS "${USER}@${HOST}" \
             "set -e; sudo mkdir -p /var/www/html; sudo tar -xzf /tmp/frontend-dist.tgz -C /var/www/html; sudo systemctl reload nginx 2>/dev/null || sudo nginx -s reload"
