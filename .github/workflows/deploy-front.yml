@@ -1,0 +1,85 @@
+# CI/CD Frontend: build Docker (Nginx + estático) → ECR → SSM en EC2_FRONTEND_INSTANCE_ID.
+# Secretos: AWS_*, AWS_REGION, ECR_REGISTRY, ECR_REPO_URL_FRONTEND, EC2_FRONTEND_INSTANCE_ID,
+#   BACKEND_PRIVATE_IP (IP privada del EC2 donde corren los APIs, para proxy /api/*).
+
+name: CI/CD - Frontend
+
+on:
+  push:
+    branches: [deploy, main, master]
+    paths:
+      - "front_despacho/**"
+      - ".github/workflows/deploy-front.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ecr-ssm-frontend
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build y Push Imagen Frontend (Etiqueta v1)
+        env:
+          ECR_REPO_URL_FRONTEND: ${{ secrets.ECR_REPO_URL_FRONTEND }}
+          BACKEND_PRIVATE_IP: ${{ secrets.BACKEND_PRIVATE_IP }}
+        run: |
+          docker build \
+            --build-arg BACKEND_HOST="${BACKEND_PRIVATE_IP}" \
+            --build-arg VITE_VENTAS_API_BASE=/api/ventas \
+            --build-arg VITE_DESPACHOS_API_BASE=/api/despachos \
+            -t "${ECR_REPO_URL_FRONTEND}:v1" \
+            ./front_despacho
+          docker push "${ECR_REPO_URL_FRONTEND}:v1"
+
+      - name: Desplegar en EC2 Frontend vía SSM
+        env:
+          INSTANCE_ID: ${{ secrets.EC2_FRONTEND_INSTANCE_ID }}
+          REGION: ${{ secrets.AWS_REGION }}
+          ECR_REG: ${{ secrets.ECR_REGISTRY }}
+          IMG: ${{ secrets.ECR_REPO_URL_FRONTEND }}:v1
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import json, os, shlex
+          from pathlib import Path
+
+          region = os.environ["REGION"]
+          ecr_reg = os.environ["ECR_REG"]
+          img = os.environ["IMG"]
+
+          login = f"aws ecr get-login-password --region {region} | docker login --username AWS --password-stdin {ecr_reg}"
+          pull = f"docker pull {img}"
+          stop = "docker stop front-despacho || true"
+          rm = "docker rm front-despacho || true"
+          run_cmd = (
+              "docker run -d --name front-despacho --restart unless-stopped -p 80:80 "
+              f"{shlex.quote(img)}"
+          )
+          Path("params.json").write_text(
+              json.dumps({"commands": [login, pull, stop, rm, run_cmd]})
+          )
+          PY
+          aws ssm send-command \
+            --instance-ids "${INSTANCE_ID}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters file://params.json \
+            --region "${REGION}"
