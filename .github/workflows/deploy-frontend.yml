@@ -1,5 +1,6 @@
 # Build de Vite/React y copia a EC2-Web (Nginx sirve /var/www/html).
-# Secretos: EC2_FRONTEND_HOST, EC2_USER, EC2_SSH_KEY (y permisos sudo en la instancia).
+# Secretos: EC2_FRONTEND_HOST, EC2_USER, EC2_SSH_KEY
+# La EC2 debe permitir sudo sin contraseña para nginx y /var/www/html (o ajusta el script).
 
 name: Deploy frontend
 
@@ -24,17 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # - name: Configure AWS credentials (AWS Academy — usar si agregas aws/ECR/S3)
-      #   uses: aws-actions/configure-aws-credentials@v4
-      #   with:
-      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      #     aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-      #     aws-region: us-east-1
-
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: front_despacho/package-lock.json
 
@@ -48,24 +41,18 @@ jobs:
       - name: Pack static site
         run: tar -czf frontend-dist.tgz -C front_despacho/dist .
 
-      - name: Upload bundle to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_FRONTEND_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: frontend-dist.tgz
-          target: /tmp/
-
-      - name: Extract and publish
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_FRONTEND_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
-          script: |
-            set -e
-            sudo mkdir -p /var/www/html
-            sudo tar -xzf /tmp/frontend-dist.tgz -C /var/www/html
-            sudo systemctl reload nginx || sudo nginx -s reload
+      - name: Upload and publish over SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_KEY }}
+          HOST: ${{ secrets.EC2_FRONTEND_HOST }}
+          USER: ${{ secrets.EC2_USER }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/ec2_deploy_key
+          chmod 600 ~/.ssh/ec2_deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+          scp -i ~/.ssh/ec2_deploy_key -o StrictHostKeyChecking=accept-new \
+            frontend-dist.tgz "${USER}@${HOST}:/tmp/frontend-dist.tgz"
+          ssh -i ~/.ssh/ec2_deploy_key -o StrictHostKeyChecking=accept-new "${USER}@${HOST}" \
+            "set -e; sudo mkdir -p /var/www/html; sudo tar -xzf /tmp/frontend-dist.tgz -C /var/www/html; sudo systemctl reload nginx 2>/dev/null || sudo nginx -s reload"
