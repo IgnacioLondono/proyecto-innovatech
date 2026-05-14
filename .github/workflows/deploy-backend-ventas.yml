@@ -1,8 +1,8 @@
 # Despliegue del API de ventas (puerto 8082 en EC2 backend).
 # Secretos: EC2_BACKEND_HOST, EC2_USER, EC2_SSH_KEY,
 #   SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
-# Opcional (solo si añades pasos aws CLI / ECR): descomenta el bloque de credenciales
-# y define AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, aws-region.
+# Despliegue en $HOME/innovatech/ventas (sin sudo en /opt).
+# Opcional AWS Academy: descomenta el bloque configure-aws-credentials en el job.
 
 name: Deploy backend ventas
 
@@ -76,9 +76,10 @@ jobs:
           script_stop: true
           script: |
             set -e
-            mkdir -p /opt/innovatech/ventas
-            tar -xzf /tmp/ventas-bundle.tgz -C /opt/innovatech/ventas
-            cd /opt/innovatech/ventas
+            DEPLOY_DIR="$HOME/innovatech/ventas"
+            mkdir -p "$DEPLOY_DIR"
+            tar -xzf /tmp/ventas-bundle.tgz -C "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR"
             docker build -t innovatech-ventas:latest .
             docker stop innovatech-ventas 2>/dev/null || true
             docker rm innovatech-ventas 2>/dev/null || true

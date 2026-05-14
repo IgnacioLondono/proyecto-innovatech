@@ -1,6 +1,7 @@
 # Despliegue del API de despachos (puerto 8081 en EC2 backend).
 # Secretos: EC2_BACKEND_HOST, EC2_USER, EC2_SSH_KEY,
 #   SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD
+# Despliegue en $HOME/innovatech/despachos (sin sudo en /opt).
 
 name: Deploy backend despachos
 
@@ -74,9 +75,10 @@ jobs:
           script_stop: true
           script: |
             set -e
-            mkdir -p /opt/innovatech/despachos
-            tar -xzf /tmp/despachos-bundle.tgz -C /opt/innovatech/despachos
-            cd /opt/innovatech/despachos
+            DEPLOY_DIR="$HOME/innovatech/despachos"
+            mkdir -p "$DEPLOY_DIR"
+            tar -xzf /tmp/despachos-bundle.tgz -C "$DEPLOY_DIR"
+            cd "$DEPLOY_DIR"
             docker build -t innovatech-despachos:latest .
             docker stop innovatech-despachos 2>/dev/null || true
             docker rm innovatech-despachos 2>/dev/null || true
