@@ -1,6 +1,5 @@
 # Build de Vite/React y copia a EC2-Web (Nginx sirve /var/www/html).
-# Secretos: mismos AWS_* que los backends + EC2_FRONTEND_HOST, EC2_USER, EC2_SSH_KEY
-# La instancia debe permitir escribir en FRONTEND_WEB_ROOT (sudo sin contraseña o usuario con permisos).
+# Secretos: EC2_FRONTEND_HOST, EC2_USER, EC2_SSH_KEY (y permisos sudo en la instancia).
 
 name: Deploy frontend
 
@@ -25,13 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
+      # - name: Configure AWS credentials (AWS Academy — usar si agregas aws/ECR/S3)
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      #     aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+      #     aws-region: us-east-1
 
       - uses: actions/setup-node@v4
         with:
