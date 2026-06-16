@@ -1,0 +1,43 @@
+name: CI/CD - Backend Ventas (Kubernetes)
+
+on:
+  push:
+    branches: [deploy]
+    paths:
+      - 'back-Ventas_SpringBoot/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Construimos usando el prefijo ventas- para no borrar la imagen de ventas
+      - name: Build y Push Imagen
+        run: |
+          docker build -t ${{ secrets.ECR_REPO_URL_BACKEND }}:ventas-${{ github.sha }} ./back-Ventas_SpringBoot/Springboot-API-REST
+          docker push ${{ secrets.ECR_REPO_URL_BACKEND }}:ventas-${{ github.sha }}
+
+      - name: Desplegar en Amazon EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
+          kubectl set image deployment/ventas-api \
+            ventas-api=${{ secrets.ECR_REPO_URL_BACKEND }}:ventas-${{ github.sha }}
+          kubectl rollout status deployment/ventas-api --timeout=180s
+
+      - name: Verificar backend ventas
+        run: |
+          kubectl get pods -l app=ventas
+          kubectl logs deployment/ventas-api --tail=20

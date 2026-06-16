@@ -1,0 +1,43 @@
+name: CI/CD - Frontend (Kubernetes)
+
+on:
+  push:
+    branches: [deploy]
+    paths:
+      - 'front_despacho/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # El frontend tiene su propio ECR, el SHA solo es suficiente
+      - name: Build y Push Imagen
+        run: |
+          docker build -t ${{ secrets.ECR_REPO_URL_FRONTEND }}:${{ github.sha }} ./front_despacho
+          docker push ${{ secrets.ECR_REPO_URL_FRONTEND }}:${{ github.sha }}
+
+      - name: Desplegar en Amazon EKS
+        run: |
+          aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
+          kubectl set image deployment/frontend-despacho \
+            frontend=${{ secrets.ECR_REPO_URL_FRONTEND }}:${{ github.sha }}
+          kubectl rollout status deployment/frontend-despacho --timeout=180s
+
+      - name: Verificar servicio frontend
+        run: |
+          kubectl get pods -l app=frontend
+          kubectl get svc frontend-service

@@ -1,0 +1,16 @@
+# Secrets locales (no commitear credenciales)
+k8s/mysql-secret.yaml
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Java build
+**/target/
+
+# Node
+**/node_modules/
+**/dist/

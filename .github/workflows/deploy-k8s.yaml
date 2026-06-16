@@ -1,0 +1,58 @@
+name: Desplegar Manifiestos Kubernetes
+
+on:
+  push:
+    branches: [deploy]
+    paths:
+      - 'k8s/**'
+  workflow_dispatch:
+
+jobs:
+  deploy-k8s:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Conectar al clúster EKS
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ secrets.AWS_REGION }} \
+            --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+      - name: Crear secret MySQL desde GitHub Secrets
+        run: |
+          kubectl create secret generic mysql-secret \
+            --from-literal=MYSQL_ROOT_PASSWORD=${{ secrets.MYSQL_ROOT_PASSWORD }} \
+            --from-literal=MYSQL_DATABASE=innovatech_db \
+            --from-literal=MYSQL_USER=${{ secrets.MYSQL_USER }} \
+            --from-literal=MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Aplicar manifiestos K8s
+        run: |
+          kubectl apply -f k8s/mysql-k8s.yaml
+          kubectl apply -f k8s/backends-k8s.yaml
+          kubectl apply -f k8s/frontend-k8s.yaml
+          kubectl apply -f k8s/hpa-config.yaml
+
+      - name: Esperar despliegue de servicios
+        run: |
+          kubectl rollout status deployment/mysql-deployment --timeout=180s
+          kubectl rollout status deployment/despachos-api --timeout=180s
+          kubectl rollout status deployment/ventas-api --timeout=180s
+          kubectl rollout status deployment/frontend-despacho --timeout=180s
+
+      - name: Mostrar estado del clúster
+        run: |
+          kubectl get pods
+          kubectl get svc
+          kubectl get hpa

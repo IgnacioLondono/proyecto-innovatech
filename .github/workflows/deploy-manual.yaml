@@ -1,0 +1,81 @@
+name: Orquestar Infraestructura Completa
+
+on:
+  workflow_dispatch: # Permite ejecutarlo manualmente desde la pestaña Actions
+
+jobs:
+  # 1. INICIAR BASE DE DATOS (EC2 DATOS)
+  iniciar-db:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Iniciar MySQL vía SSM
+        run: |
+          aws ssm send-command \
+            --instance-ids ${{ secrets.EC2_DATABASE_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{"commands":[
+              "sudo systemctl start docker",
+              "docker-compose up -d"
+            ]}'
+
+  # 2. INICIAR BACKENDS (EC2 APP)
+  iniciar-backends:
+    needs: iniciar-db 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Pull e Iniciar Ventas y Despachos
+        run: |
+          aws ssm send-command \
+            --instance-ids ${{ secrets.EC2_BACKEND_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{"commands":[
+              "sudo systemctl start docker",
+              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
+              "docker pull ${{ secrets.ECR_REPO_URL_BACKEND }}:ventas-v1",
+              "docker pull ${{ secrets.ECR_REPO_URL_BACKEND }}:despachos-v1",
+              "docker stop ventas-api || true && docker rm ventas-api || true",
+              "docker stop despachos-api || true && docker rm despachos-api || true",
+              "docker run -d --name ventas-api -p 8082:8082 -e SPRING_DATASOURCE_URL=jdbc:mysql://10.0.8.89:3306/innovatech_db -e SPRING_DATASOURCE_USERNAME=admin -e SPRING_DATASOURCE_PASSWORD=admin123 ${{ secrets.ECR_REPO_URL_BACKEND }}:ventas-v1",
+              "docker run -d --name despachos-api -p 8081:8081 -e SPRING_DATASOURCE_URL=jdbc:mysql://10.0.8.89:3306/innovatech_db -e SPRING_DATASOURCE_USERNAME=admin -e SPRING_DATASOURCE_PASSWORD=admin123 ${{ secrets.ECR_REPO_URL_BACKEND }}:despachos-v1"
+            ]}'
+
+  # 3. INICIAR FRONTEND (EC2 WEB)
+  iniciar-frontend:
+    needs: iniciar-backends 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Pull e Iniciar Nginx/React
+        run: |
+          aws ssm send-command \
+            --instance-ids ${{ secrets.EC2_FRONTEND_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{"commands":[
+              "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}",
+              "docker pull ${{ secrets.ECR_REPO_URL_FRONTEND }}:v1",
+              "docker stop front-despacho || true && docker rm front-despacho || true",
+              "docker run -d --name front-despacho -p 80:80 ${{ secrets.ECR_REPO_URL_FRONTEND }}:v1"
+            ]}'

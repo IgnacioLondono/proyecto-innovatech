@@ -1,0 +1,134 @@
+# ==========================================
+# 1. MICROSERVICIO DE VENTAS
+# ==========================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ventas-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ventas
+  template:
+    metadata:
+      labels:
+        app: ventas
+    spec:
+      containers:
+      - name: ventas-api
+        image: 637423587001.dkr.ecr.us-east-1.amazonaws.com/innovatech-backend:ventas-v1
+        ports:
+        - containerPort: 8082
+        env:
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:mysql://mysql-service:3306/innovatech_db?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true"
+        - name: SPRING_DATASOURCE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /api/v1/ventas
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/v1/ventas
+            port: 8082
+          initialDelaySeconds: 60
+          periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ventas-service
+spec:
+  ports:
+    - port: 8082
+      targetPort: 8082
+  selector:
+    app: ventas
+
+# ==========================================
+# 2. MICROSERVICIO DE DESPACHOS
+# ==========================================
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: despachos-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: despachos
+  template:
+    metadata:
+      labels:
+        app: despachos
+    spec:
+      containers:
+      - name: despachos-api
+        image: 637423587001.dkr.ecr.us-east-1.amazonaws.com/innovatech-backend:despachos-v1
+        ports:
+        - containerPort: 8081
+        env:
+        - name: SPRING_DATASOURCE_URL
+          value: "jdbc:mysql://mysql-service:3306/innovatech_db?useSSL=false&serverTimezone=UTC&createDatabaseIfNotExist=true"
+        - name: SPRING_DATASOURCE_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_USER
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secret
+              key: MYSQL_PASSWORD
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        readinessProbe:
+          httpGet:
+            path: /api/v1/despachos
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /api/v1/despachos
+            port: 8081
+          initialDelaySeconds: 60
+          periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: despachos-service
+spec:
+  ports:
+    - port: 8081
+      targetPort: 8081
+  selector:
+    app: despachos

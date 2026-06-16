@@ -14,6 +14,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.net.URI;
 import java.util.List;
 
+
 @CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("api/v1/despachos")
@@ -36,6 +37,7 @@ public class DespachoController {
         return ResponseEntity.created(location).body(despacho);
     }
 
+    
     @Operation(summary = "Actualizar un despacho existente")
     @PutMapping("/{idDespacho}")
     public ResponseEntity<Despacho> actualizarDespacho(
